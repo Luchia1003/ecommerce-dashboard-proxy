@@ -1,6 +1,7 @@
 Flask==3.0.0
 snowflake-connector-python==3.0.4
 pandas==1.5.3
+numpy==1.23.5
 pyarrow==14.0.1
 Flask-Cors==4.0.0
 cryptography==40.0.2
