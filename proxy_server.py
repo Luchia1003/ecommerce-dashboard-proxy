@@ -1,82 +1,95 @@
 import os
-import json
-from base64 import b64decode
+import base64
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import snowflake.connector
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+import logging
+
+# Setup basic logging
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
-CORS(app) # 允许来自任何源的跨域请求
+CORS(app)
 
 def get_snowflake_connection():
-    """
-    从环境变量安全地获取凭据并连接到 Snowflake。
-    """
     try:
-        # 从环境变量加载私钥内容
+        # 1. Get the Base64 encoded private key from environment variables
         private_key_str = os.environ.get('PRIVATE_KEY_STR')
         if not private_key_str:
-            raise ValueError("PRIVATE_KEY_STR 环境变量未设置。")
-
-        # 从环境变量加载私钥密码
-        private_key_passphrase_str = os.environ.get('PRIVATE_KEY_PASSPHRASE')
-        if not private_key_passphrase_str:
-            raise ValueError("PRIVATE_KEY_PASSPHRASE 环境变量未设置。")
+            raise ValueError("环境变量 PRIVATE_KEY_STR 未设置。")
         
-        private_key_passphrase = private_key_passphrase_str.encode()
+        # 2. Decode the Base64 string to bytes
+        private_key_bytes = base64.b64decode(private_key_str)
 
+        # 3. CORRECTED LOGIC: Handle both encrypted and unencrypted keys
+        # Get passphrase if it exists. If not, passphrase remains None.
+        passphrase = os.environ.get('PRIVATE_KEY_PASSPHRASE')
+        
+        # The `password` argument can be None for unencrypted keys.
+        # Encode the passphrase to bytes only if it's not None.
+        password_bytes = passphrase.encode() if passphrase else None
+        
+        # 4. Load the private key
         p_key = serialization.load_pem_private_key(
-            private_key_str.encode(),
-            password=private_key_passphrase,
+            private_key_bytes,
+            password=password_bytes, # Pass None if key is not encrypted
+            backend=default_backend()
         )
+
+        # 5. Get the private key in DER format for the Snowflake connector
         pkb = p_key.private_bytes(
             encoding=serialization.Encoding.DER,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
         )
 
+        # 6. Connect to Snowflake
         conn = snowflake.connector.connect(
             user=os.environ.get('SNOWFLAKE_USER'),
             account=os.environ.get('SNOWFLAKE_ACCOUNT'),
             private_key=pkb,
             warehouse=os.environ.get('SNOWFLAKE_WAREHOUSE'),
             database=os.environ.get('SNOWFLAKE_DATABASE'),
-            schema=os.environ.get('SNOWFLAKE_SCHEMA'),
+            schema=os.environ.get('SNOWFLAKE_SCHEMA')
         )
         return conn
+        
     except Exception as e:
-        print(f"连接 Snowflake 时出错: {e}")
-        # 在实际生产中，您可能希望有更复杂的日志记录
-        raise
+        # Catch all errors during key deserialization or connection
+        # and wrap them in an informative message for easier debugging.
+        logging.error(f"Failed to connect to Snowflake: {e}")
+        # Re-raise the exception to be caught by the route handler
+        raise Exception(f"连接 Snowflake 时出错: {e}")
+
 
 @app.route('/api/query', methods=['POST'])
 def query_snowflake():
-    """
-    接收 SQL 查询，在 Snowflake 上执行，并以 JSON 格式返回结果。
-    """
-    data = request.get_json()
-    sql_query = data.get('sql')
-
-    if not sql_query:
-        return jsonify({"message": "请求中缺少 'sql' 参数。"}), 400
-
-    conn = None
     try:
+        data = request.get_json()
+        sql = data.get('sql')
+
+        if not sql:
+            return jsonify({'error': 'SQL query is missing.'}), 400
+
         conn = get_snowflake_connection()
-        cur = conn.cursor(snowflake.connector.cursor.DictCursor)
-        cur.execute(sql_query)
-        result = cur.fetchall()
+        cursor = conn.cursor(snowflake.connector.DictCursor)
         
-        # 将结果转换为 JSON (DictCursor 已经完成了大部分工作)
-        return jsonify(result)
+        cursor.execute(sql)
+        results = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify(results)
 
     except Exception as e:
-        return jsonify({"message": f"执行查询时出错: {str(e)}"}), 500
-    finally:
-        if conn:
-            conn.close()
+        # This catches connection errors etc.
+        logging.error(f"Error during query execution: {e}") # Log to Render
+        # Return the specific error message from get_snowflake_connection or query execution
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    # 这部分仅用于本地测试，在 Render 上会使用 gunicorn 启动
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5001)))
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
