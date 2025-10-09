@@ -3,6 +3,9 @@ import base64
 import logging  # 新增: 导入日志模块，解决 NameError
 import pandas as pd
 import numpy as np
+import json
+from decimal import Decimal
+from datetime import date, datetime
 from flask import Flask, jsonify
 from flask_cors import CORS
 from snowflake.connector import connect, DatabaseError # 新增: 导入 connect 和 DatabaseError
@@ -82,51 +85,77 @@ def get_snowflake_connection():
         logging.critical(f"An unexpected error occurred in get_snowflake_connection: {e}")
         raise
 
-def sanitize_df_for_json(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    将 DataFrame 里的 NaN / Inf 等不可序列化的值替换为 None，
-    这样 jsonify -> JSON 时就是标准的 null。
-    """
-    if df is None or df.empty:
-        return df
-    # 先把 +/-inf 变成 NaN，再统一用 where 替换为 None
-    df = df.replace([np.inf, -np.inf], np.nan)
-    # 注意：where 会保留原列的 dtype，比 replace({np.nan: None}) 更稳
-    return df.where(pd.notna(df), None)
+def _to_json_safe(value):
+    # 把所有不可序列化或不合规 JSON 的值转换
+    if value is None:
+        return None
+    if isinstance(value, float):
+        # 处理 inf / nan
+        if value != value or value == float('inf') or value == float('-inf'):
+            return None
+        return value
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (date, datetime)):
+        # 你也可以 .isoformat() 或仅返回日期部分
+        return value.isoformat()
+    # numpy 标量也转成 Python 原生类型
+    try:
+        import numpy as np
+        if isinstance(value, (np.integer, np.floating, np.bool_)):
+            v = value.item()
+            return _to_json_safe(v)
+        if value is np.nan:
+            return None
+    except Exception:
+        pass
+    return value
 
+def _rows_to_json_safe(rows):
+    safe = []
+    for r in rows:
+        safe.append({k: _to_json_safe(v) for k, v in r.items()})
+    return safe
 
-# 创建 /api/data 路由
 @app.route('/api/data', methods=['GET'])
 def get_dashboard_data():
     try:
         conn = get_snowflake_connection()
-        cursor = conn.cursor()
+        cur = conn.cursor(snowflake.connector.DictCursor)
 
+        # ✅ 强烈建议：用“库.模式.表”全限定，避免默认 DB/Schema 造成“0 行”
         queries = {
-            "productCosts": "SELECT sku, description, unit_cost FROM MASTER_COST_FACT",
-            "orders": "SELECT order_id, sales_sku, quantity, sales_margin, product_sales, gross_sales, date_time, currency_code, marketplace_name FROM AMAZON_NEW_ORDER_FACT",
-            "refunds": "SELECT order_id, sales_sku, quantity, refund_margin, product_refund, gross_refund, date_time, currency_code, marketplace_name FROM AMAZON_NEW_REFUND_FACT",
-            "shipping": "SELECT ship_date, order_id, items, shipping_cost FROM NEW_SHIPPING",
-            "inventory": "SELECT seller_sku, item_name, quantity, open_date FROM INVENTORY_CURRENT"
+            "productCosts": "SELECT sku, description, unit_cost FROM SKU_PROFIT_PROJECT.ERD.MASTER_COST_FACT",
+            "orders":       "SELECT order_id, sales_sku, quantity, sales_margin, product_sales, gross_sales, date_time, currency_code, marketplace_name FROM SKU_PROFIT_PROJECT.ERD.AMAZON_NEW_ORDER_FACT",
+            "refunds":      "SELECT order_id, sales_sku, quantity, refund_margin, product_refund, gross_refund, date_time, currency_code, marketplace_name FROM SKU_PROFIT_PROJECT.ERD.AMAZON_NEW_REFUND_FACT",
+            "shipping":     "SELECT ship_date, order_id, items, shipping_cost FROM SKU_PROFIT_PROJECT.ERD.NEW_SHIPPING",
+            "inventory":    "SELECT seller_sku, item_name, quantity, open_date FROM SKU_PROFIT_PROJECT.ERD.INVENTORY_CURRENT"
         }
 
-        all_data = {}
-        for key, query in queries.items():
-            df = pd.read_sql(query, conn)
-            df = sanitize_df_for_json(df)             # ← 关键一步：把 NaN/Inf 处理成 None
-            all_data[key] = df.to_dict(orient='records')
+        result = {}
+        for key, sql in queries.items():
+            app.logger.info(f"query: [{sql}]")
+            cur.execute(sql)
+            rows = cur.fetchall()  # list[dict]
+            app.logger.info(f"returned rows: {len(rows)}")
+            result[key] = _rows_to_json_safe(rows)
 
-        return jsonify(all_data)
+        # 用 json.dumps 严格禁止 NaN
+        payload = json.dumps(result, ensure_ascii=False, allow_nan=False)
+        return app.response_class(payload, mimetype='application/json')
 
     except Exception as e:
-        app.logger.error(f"An error occurred: {e}")
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"Error during query execution: {e}")
+        return jsonify({'error': str(e)}), 500
     finally:
-        if 'cursor' in locals() and cursor:
-            cursor.close()
-        if 'conn' in locals() and conn:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        try:
             conn.close()
-
+        except Exception:
+            pass
 # 添加一个根路由用于健康检查
 @app.route('/', methods=['GET'])
 def index():
