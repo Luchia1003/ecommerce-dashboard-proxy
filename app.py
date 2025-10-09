@@ -2,6 +2,7 @@ import os
 import base64
 import logging  # 新增: 导入日志模块，解决 NameError
 import pandas as pd
+import numpy as np
 from flask import Flask, jsonify
 from flask_cors import CORS
 from snowflake.connector import connect, DatabaseError # 新增: 导入 connect 和 DatabaseError
@@ -81,6 +82,18 @@ def get_snowflake_connection():
         logging.critical(f"An unexpected error occurred in get_snowflake_connection: {e}")
         raise
 
+def sanitize_df_for_json(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    将 DataFrame 里的 NaN / Inf 等不可序列化的值替换为 None，
+    这样 jsonify -> JSON 时就是标准的 null。
+    """
+    if df is None or df.empty:
+        return df
+    # 先把 +/-inf 变成 NaN，再统一用 where 替换为 None
+    df = df.replace([np.inf, -np.inf], np.nan)
+    # 注意：where 会保留原列的 dtype，比 replace({np.nan: None}) 更稳
+    return df.where(pd.notna(df), None)
+
 
 # 创建 /api/data 路由
 @app.route('/api/data', methods=['GET'])
@@ -89,8 +102,6 @@ def get_dashboard_data():
         conn = get_snowflake_connection()
         cursor = conn.cursor()
 
-        # 定义需要执行的 SQL 查询
-        # 注意：请根据你 Snowflake 中真实的表名和列名修改这些查询
         queries = {
             "productCosts": "SELECT sku, description, unit_cost FROM MASTER_COST_FACT",
             "orders": "SELECT order_id, sales_sku, quantity, sales_margin, product_sales, gross_sales, date_time, currency_code, marketplace_name FROM AMAZON_NEW_ORDER_FACT",
@@ -99,21 +110,18 @@ def get_dashboard_data():
             "inventory": "SELECT seller_sku, item_name, quantity, open_date FROM INVENTORY_CURRENT"
         }
 
-        # 执行所有查询并将结果存储在字典中
         all_data = {}
         for key, query in queries.items():
             df = pd.read_sql(query, conn)
-            # 将 DataFrame 转换为 JSON 记录格式，这正是前端所期望的
+            df = sanitize_df_for_json(df)             # ← 关键一步：把 NaN/Inf 处理成 None
             all_data[key] = df.to_dict(orient='records')
 
         return jsonify(all_data)
 
     except Exception as e:
-        # 如果出错，返回 500 错误和详细信息
-        print(f"An error occurred: {e}")
+        app.logger.error(f"An error occurred: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
-        # 确保连接被关闭
         if 'cursor' in locals() and cursor:
             cursor.close()
         if 'conn' in locals() and conn:
