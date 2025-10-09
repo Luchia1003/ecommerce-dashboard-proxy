@@ -93,10 +93,10 @@ def get_dashboard_data():
         # 注意：请根据你 Snowflake 中真实的表名和列名修改这些查询
         queries = {
             "productCosts": "SELECT sku, description, unit_cost FROM MASTER_COST_FACT",
-            "orders": "SELECT order_id, sales_sku, quantity, sales_margin, product_sales, gross_sales, date_time, currency_code, marketplace_name FROM ORDERS_BASE",
-            "refunds": "SELECT order_id, sales_sku, quantity, refund_margin, product_refund, gross_refund, date_time, currency_code, marketplace_name FROM REFUNDS_BASE",
-            "shipping": "SELECT ship_date, order_id, items, shipping_cost FROM SHIPPING_DATA",
-            "inventory": "SELECT seller_sku, item_name, quantity, open_date FROM INVENTORY_DATA"
+            "orders": "SELECT order_id, sales_sku, quantity, sales_margin, product_sales, gross_sales, date_time, currency_code, marketplace_name FROM AMAZON_NEW_ORDER_FACT",
+            "refunds": "SELECT order_id, sales_sku, quantity, refund_margin, product_refund, gross_refund, date_time, currency_code, marketplace_name FROM AMAZON_NEW_REFUND_FACT",
+            "shipping": "SELECT ship_date, order_id, items, shipping_cost FROM NEW_SHIPPING",
+            "inventory": "SELECT seller_sku, item_name, quantity, open_date FROM INVENTORY_CURRENT"
         }
 
         # 执行所有查询并将结果存储在字典中
