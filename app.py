@@ -12,35 +12,64 @@ app = Flask(__name__)
 CORS(app)
 
 # 定义一个函数来获取 Snowflake 连接
+logging.basicConfig(level=logging.INFO)
+
 def get_snowflake_connection():
-    # 从环境变量中解码 Base64 编码的私钥
-    private_key_b64 = os.getenv('PRIVATE_KEY_STR')
-    if not private_key_b64:
-        raise ValueError("PRIVATE_key_STR environment variable not set")
+    try:
+        logging.info("Attempting to decode private key from environment variable...")
+        
+        # 1. 解码 Base64 密钥
+        # 这一步是新的、关键的错误捕捉点
+        private_key_b64 = os.environ.get('PRIVATE_KEY_STR')
+        if not private_key_b64:
+            raise ValueError("Environment variable PRIVATE_KEY_STR is not set.")
+            
+        private_key_bytes = base64.b64decode(private_key_b64)
+        logging.info("Private key successfully decoded from Base64.")
 
-    private_key_bytes = base64.b64decode(private_key_b64)
-    
-    # 使用 cryptography 库加载私钥
-    p_key = serialization.load_pem_private_key(
-        private_key_bytes,
-        password=None,  # 如果你的私钥有密码，请在这里设置
-    )
-    pkb = p_key.private_bytes(
-        encoding=serialization.Encoding.DER,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption()
-    )
+        # 2. 从字节中加载私钥
+        # 这一步验证密钥格式是否正确
+        p_key = serialization.load_pem_private_key(
+            private_key_bytes,
+            password=None, # 如果你的密钥有密码，在这里填写
+            backend=default_backend()
+        )
+        logging.info("Private key object successfully loaded.")
 
-    # 创建 Snowflake 连接
-    conn = snowflake.connector.connect(
-        user=os.getenv('SNOWFLAKE_USERNAME'),
-        account=os.getenv('SNOWFLAKE_ACCOUNT'),
-        private_key=pkb,
-        warehouse=os.getenv('SNOWFLAKE_WAREHOUSE'),
-        database=os.getenv('SNOWFLAKE_DATABASE'),
-        schema=os.getenv('SNOWFLAKE_SCHEMA')
-    )
-    return conn
+        pkb = p_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        logging.info("Private key converted to DER format for connection.")
+
+        logging.info("Connecting to Snowflake...")
+        conn = connect(
+            user=os.environ.get('SNOWFLAKE_USERNAME'),
+            account=os.environ.get('SNOWFLAKE_ACCOUNT'),
+            private_key=pkb,
+            warehouse=os.environ.get('SNOWFLAKE_WAREHOUSE'),
+            database=os.environ.get('SNOWFLAKE_DATABASE'),
+            schema=os.environ.get('SNOWFLAKE_SCHEMA'),
+            role=os.environ.get('SNOWFLAKE_ROLE'),
+        )
+        logging.info("Successfully connected to Snowflake.")
+        return conn
+
+    except (ValueError, TypeError) as b64_error:
+        # 如果 Base64 解码失败，我们会在这里看到清晰的日志
+        logging.critical(f"CRITICAL ERROR: Failed to decode or parse the private key. This is the most likely cause of the problem. Error: {b64_error}")
+        logging.critical("Please re-generate the Base64 string for PRIVATE_KEY_STR and ensure it is copied correctly.")
+        raise
+    except DatabaseError as db_err:
+        # 捕捉 Snowflake 特定的连接错误
+        logging.critical(f"Snowflake DatabaseError occurred: {db_err}")
+        raise
+    except Exception as e:
+        # 捕捉所有其他意外错误
+        logging.critical(f"An unexpected error occurred in get_snowflake_connection: {e}")
+        raise
+
 
 # 创建 /api/data 路由
 @app.route('/api/data', methods=['GET'])
