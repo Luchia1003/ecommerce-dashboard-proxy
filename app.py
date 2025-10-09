@@ -21,8 +21,6 @@ def get_snowflake_connection():
     try:
         logging.info("Attempting to decode private key from environment variable...")
         
-        # 1. 解码 Base64 密钥
-        # 这一步是新的、关键的错误捕捉点
         private_key_b64 = os.environ.get('PRIVATE_KEY_STR')
         if not private_key_b64:
             raise ValueError("Environment variable PRIVATE_KEY_STR is not set.")
@@ -30,11 +28,9 @@ def get_snowflake_connection():
         private_key_bytes = base64.b64decode(private_key_b64)
         logging.info("Private key successfully decoded from Base64.")
 
-        # 2. 从字节中加载私钥
-        # 这一步验证密钥格式是否正确
         p_key = serialization.load_pem_private_key(
             private_key_bytes,
-            password=None, # 如果你的密钥有密码，在这里填写
+            password=None, 
             backend=default_backend()
         )
         logging.info("Private key object successfully loaded.")
@@ -46,30 +42,42 @@ def get_snowflake_connection():
         )
         logging.info("Private key converted to DER format for connection.")
 
-        logging.info("Connecting to Snowflake...")
+        # --- 新的诊断日志和参数 ---
+        conn_params = {
+            "user": os.environ.get('SNOWFLAKE_USERNAME'),
+            "account": os.environ.get('SNOWFLAKE_ACCOUNT'),
+            "warehouse": os.environ.get('SNOWFLAKE_WAREHOUSE'),
+            "database": os.environ.get('SNOWFLAKE_DATABASE'),
+            "schema": os.environ.get('SNOWFLAKE_SCHEMA'),
+            "role": os.environ.get('SNOWFLAKE_ROLE'),
+            # 这是关键的诊断标志，它会跳过 OCSP 检查
+            "insecure_mode": True 
+        }
+        
+        logging.info(f"Connecting to Snowflake with parameters (private key omitted): {conn_params}")
+        logging.warning("DIAGNOSTIC MODE: 'insecure_mode' is enabled. This bypasses OCSP checks and is NOT secure for production.")
+
+        # 使用上面定义的参数进行连接
         conn = connect(
-            user=os.environ.get('SNOWFLAKE_USERNAME'),
-            account=os.environ.get('SNOWFLAKE_ACCOUNT'),
+            user=conn_params['user'],
+            account=conn_params['account'],
             private_key=pkb,
-            warehouse=os.environ.get('SNOWFLAKE_WAREHOUSE'),
-            database=os.environ.get('SNOWFLAKE_DATABASE'),
-            schema=os.environ.get('SNOWFLAKE_SCHEMA'),
-            role=os.environ.get('SNOWFLAKE_ROLE'),
+            warehouse=conn_params['warehouse'],
+            database=conn_params['database'],
+            schema=conn_params['schema'],
+            role=conn_params['role'],
+            insecure_mode=conn_params['insecure_mode'] # 传递诊断标志
         )
-        logging.info("Successfully connected to Snowflake.")
+        logging.info("<<< SUCCESS! >>> Successfully connected to Snowflake!")
         return conn
 
     except (ValueError, TypeError) as b64_error:
-        # 如果 Base64 解码失败，我们会在这里看到清晰的日志
-        logging.critical(f"CRITICAL ERROR: Failed to decode or parse the private key. This is the most likely cause of the problem. Error: {b64_error}")
-        logging.critical("Please re-generate the Base64 string for PRIVATE_KEY_STR and ensure it is copied correctly.")
+        logging.critical(f"CRITICAL ERROR: Failed to decode or parse the private key. Error: {b64_error}")
         raise
     except DatabaseError as db_err:
-        # 捕捉 Snowflake 特定的连接错误
-        logging.critical(f"Snowflake DatabaseError occurred: {db_err}")
+        logging.critical(f"Snowflake DatabaseError occurred while in diagnostic mode: {db_err}")
         raise
     except Exception as e:
-        # 捕捉所有其他意外错误
         logging.critical(f"An unexpected error occurred in get_snowflake_connection: {e}")
         raise
 
