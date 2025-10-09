@@ -1,18 +1,21 @@
 import os
 import base64
-import snowflake.connector
+import logging  # 新增: 导入日志模块，解决 NameError
 import pandas as pd
 from flask import Flask, jsonify
 from flask_cors import CORS
+from snowflake.connector import connect, DatabaseError # 新增: 导入 connect 和 DatabaseError
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend # 新增: 导入 default_backend
 
 # 初始化 Flask 应用
 app = Flask(__name__)
-# 允许所有来源的跨域请求，这对于连接前端至关重要
+# 允许所有来源的跨域请求
 CORS(app)
 
-# 定义一个函数来获取 Snowflake 连接
-logging.basicConfig(level=logging.INFO)
+# 将日志配置移到所有函数定义之前，确保它在应用启动时就设置好了
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def get_snowflake_connection():
     try:
