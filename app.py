@@ -1,13 +1,14 @@
 #
-# app.py (Final Merged & Corrected Version)
+# app.py (Final Version with Timestamp Fix)
 #
 import os
 import json
 import base64
 import logging
+import datetime
+import pandas as pd
 from flask import Flask, Response
 from flask_cors import CORS
-import pandas as pd
 import snowflake.connector
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
@@ -17,7 +18,18 @@ app = Flask(__name__)
 CORS(app)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- Snowflake Connection Logic (from your working old file) ---
+# --- JSON Serializer for Datetime/Timestamp objects ---
+def json_converter(o):
+    """
+    This function is a custom converter for the json.dumps() method.
+    It checks if an object is a datetime or pandas Timestamp and converts it to a
+    standard ISO 8601 string format, which is JSON serializable.
+    """
+    if isinstance(o, (datetime.datetime, datetime.date, pd.Timestamp)):
+        return o.isoformat()
+    raise TypeError(f"Object of type {o.__class__.__name__} is not JSON serializable")
+
+# --- Snowflake Connection Logic ---
 def get_snowflake_connection():
     """Establishes a connection to Snowflake using environment variables."""
     try:
@@ -52,14 +64,12 @@ def get_snowflake_connection():
             "database": os.environ.get('SNOWFLAKE_DATABASE'),
             "schema": os.environ.get('SNOWFLAKE_SCHEMA'),
             "role": os.environ.get('SNOWFLAKE_ROLE'),
-            "insecure_mode": True  # Diagnostic flag from your old file
+            "insecure_mode": True
         }
         
-        # Log parameters for debugging, but omit the private key itself
-        log_params = {k: v for k, v in conn_params.items() if k != 'private_key'}
+        log_params = {k: v for k, v in conn_params.items()}
         logging.info(f"Connecting to Snowflake with parameters: {log_params}")
         
-        # Check for empty essential parameters before connecting
         if not all([conn_params['user'], conn_params['account']]):
             raise ValueError("SNOWFLAKE_USERNAME or SNOWFLAKE_ACCOUNT environment variable is empty.")
 
@@ -72,7 +82,6 @@ def get_snowflake_connection():
 
     except Exception as e:
         logging.critical(f"An unexpected error occurred in get_snowflake_connection: {e}")
-        # Re-raise the exception to be caught by the streaming function
         raise
 
 # --- Queries Definition ---
@@ -85,7 +94,7 @@ queries = {
     "inventory_warehouse_level_snap": "SELECT * FROM SKU_PROFIT_PROJECT.ERD.INVENTORY_WAREHOUSE_LEVEL_SNAP"
 }
 
-# --- Data Streaming Logic (from your new file) ---
+# --- Data Streaming Logic ---
 def stream_data():
     """Generator function that connects to Snowflake and streams data in NDJSON format."""
     conn = None
@@ -97,7 +106,6 @@ def stream_data():
             logging.info(f"Executing query for: {key}")
             cursor.execute(query)
             
-            # Fetch results in chunks (batches) of pandas DataFrames to keep memory low
             for df_chunk in cursor.fetch_pandas_batches():
                 records = df_chunk.to_dict('records')
                 
@@ -106,8 +114,8 @@ def stream_data():
                     "data": records
                 }
                 
-                # Yield the payload as a JSON string, followed by a newline (NDJSON format)
-                yield json.dumps(payload) + '\n'
+                # Use the custom converter to handle Timestamp objects
+                yield json.dumps(payload, default=json_converter) + '\n'
             logging.info(f"Finished streaming for: {key}")
 
     except Exception as e:
@@ -135,5 +143,4 @@ def index():
 
 # --- Main Execution ---
 if __name__ == '__main__':
-    # This block is for local development. Render uses Gunicorn to run the app.
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
