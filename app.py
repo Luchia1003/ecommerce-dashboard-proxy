@@ -86,12 +86,108 @@ def get_snowflake_connection():
 
 # --- Queries Definition ---
 queries = {
-    "productCosts": "SELECT sku, description, unit_cost FROM SKU_PROFIT_PROJECT.ERD.MASTER_COST_FACT",
-    "orders": "SELECT * FROM SKU_PROFIT_PROJECT.ERD.AMAZON_NEW_ORDER_FACT",
-    "refunds": "SELECT * FROM SKU_PROFIT_PROJECT.ERD.AMAZON_NEW_REFUND_FACT",
-    "shipping": "SELECT * FROM SKU_PROFIT_PROJECT.ERD.NEW_SHIPPING",
-    "inventory_product_level_snap": "SELECT * FROM SKU_PROFIT_PROJECT.ERD.INVENTORY_PRODUCT_LEVEL_SNAP",
-    "inventory_warehouse_level_snap": "SELECT * FROM SKU_PROFIT_PROJECT.ERD.INVENTORY_WAREHOUSE_LEVEL_SNAP"
+    # 这个查询保持不变，因为它已经明确指定了列
+    "productCosts": """
+        SELECT sku, description, unit_cost
+        FROM SKU_PROFIT_PROJECT.ERD.MASTER_COST_FACT
+    """,
+    
+    # 这个查询从您的旧版本中恢复，以避免使用不安全的 `SELECT *`
+    "orders": """
+        SELECT order_id, sales_sku, quantity, sales_margin, product_sales,
+               gross_sales, date_time, currency_code, marketplace_name
+        FROM SKU_PROFIT_PROJECT.ERD.AMAZON_NEW_ORDER_FACT
+    """,
+
+    # 这个查询也从旧版本中恢复
+    "refunds": """
+        SELECT order_id, sales_sku, quantity, refund_margin, product_refund,
+               gross_refund, date_time, currency_code, marketplace_name
+        FROM SKU_PROFIT_PROJECT.ERD.AMAZON_NEW_REFUND_FACT
+    """,
+
+    # 这个查询同样从旧版本中恢复
+    "shipping": """
+        SELECT ship_date, order_id, items, shipping_cost
+        FROM SKU_PROFIT_PROJECT.ERD.NEW_SHIPPING
+    """,
+
+    # --- 关键更新 ---
+    # 这个查询现在明确地选择并转换(CAST)所有列的数据类型。
+    # 这将修复之前因特殊数据类型导致后端崩溃，从而使产品库存加载为0行的问题。
+    # 列名是根据您前端的 `types.ts` 文件定义的。
+    "inventory_product_level_snap": """
+        SELECT
+            ASIN::VARCHAR,
+            CARTS::VARCHAR,
+            COST::FLOAT,
+            COUNTRY::VARCHAR,
+            HEIGHT::FLOAT,
+            NAME::VARCHAR,
+            PRICE::FLOAT,
+            PRODUCT_ID::INTEGER,
+            SKU::VARCHAR,
+            TAGS::VARCHAR,
+            TOTAL_ALLOCATED::INTEGER,
+            TOTAL_AVAILABLE::INTEGER,
+            TOTAL_COMMITTED::INTEGER,
+            TOTAL_MFG_ORDERED::INTEGER,
+            TOTAL_ON_HAND::INTEGER,
+            TOTAL_UNALLOCATED::INTEGER,
+            TO_BE_SHIPPED::INTEGER,
+            UPC::VARCHAR,
+            UPDATED::VARCHAR,
+            WEIGHT::FLOAT,
+            WIDTH::FLOAT
+        FROM SKU_PROFIT_PROJECT.ERD.INVENTORY_PRODUCT_LEVEL_SNAP
+    """,
+
+    # --- 关键更新 ---
+    # 这个查询也明确地选择并转换所有列，确保数据类型的安全和一致性。
+    # 这应该能解决仓库库存数据加载不完整（因数据量大和潜在类型问题中断）的问题。
+    "inventory_warehouse_level_snap": """
+        SELECT
+            ALLOCATED::INTEGER,
+            AOH::INTEGER,
+            ASIN::VARCHAR,
+            CARTS::VARCHAR,
+            CMT::INTEGER,
+            COST::FLOAT,
+            COUNTRY::VARCHAR,
+            HEIGHT::FLOAT,
+            LOCATION::VARCHAR,
+            LOW_STOCK_THTD::INTEGER,
+            NAME::VARCHAR,
+            OMO::INTEGER,
+            ON_HAND::INTEGER,
+            OOS_THTD::INTEGER,
+            OPO::INTEGER,
+            POH::INTEGER,
+            PRICE::FLOAT,
+            PRODUCT_ID::INTEGER,
+            SKU::VARCHAR,
+            TAGS::VARCHAR,
+            TOTAL_ALLOCATED::INTEGER,
+            TOTAL_AVAILABLE::INTEGER,
+            TOTAL_COMMITTED::INTEGER,
+            TOTAL_MFG_ORDERED::INTEGER,
+            TOTAL_ON_HAND::INTEGER,
+            TOTAL_UNALLOCATED::INTEGER,
+            TO_BE_SHIPPED::INTEGER,
+            UNALLOCATED::INTEGER,
+            UPC::VARCHAR,
+            UPDATED::VARCHAR,
+            WEIGHT::FLOAT,
+            WH_CREATED::VARCHAR,
+            WH_ID::INTEGER,
+            WH_IS_DEFAULT::BOOLEAN,
+            WH_LAST_CHANGE::VARCHAR,
+            WH_NAME::VARCHAR,
+            WH_SHIP_CFG::BOOLEAN,
+            WH_UPDATED::VARCHAR,
+            WIDTH::FLOAT
+        FROM SKU_PROFIT_PROJECT.ERD.INVENTORY_WAREHOUSE_LEVEL_SNAP
+    """
 }
 
 # --- Data Streaming Logic ---
