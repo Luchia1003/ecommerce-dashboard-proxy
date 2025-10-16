@@ -128,9 +128,17 @@ def get_dashboard_data():
                 SELECT ship_date, order_id, items, shipping_cost
                 FROM SKU_PROFIT_PROJECT.ERD.NEW_SHIPPING
             """,
-            "inventory": """
-                SELECT seller_sku, item_name, quantity, open_date
-                FROM SKU_PROFIT_PROJECT.ERD.INVENTORY_CURRENT
+            "inventory_product_level_snap": """
+                SELECT *
+                FROM SKU_PROFIT_PROJECT.ERD.INVENTORY_PRODUCT_LEVEL_SNAP
+            """,
+            "inventory_warehouse_level_snap": """
+                SELECT
+                    ALLOCATED, AOH, ASIN, CARTS, CMT, COST, COUNTRY, HEIGHT,
+                    LOCATION, LOW_STOCK_THTD, NAME, OMO, ON_HAND, OOS_THTD, OPO,
+                    POH, PRICE, PRODUCT_ID, SKU, UNALLOCATED, UPC, UPDATED,
+                    WEIGHT, WH_ID, WH_LAST_CHANGE, WH_NAME, WH_UPDATED, WIDTH
+                FROM SKU_PROFIT_PROJECT.ERD.INVENTORY_WAREHOUSE_LEVEL_SNAP
             """
         }
 
