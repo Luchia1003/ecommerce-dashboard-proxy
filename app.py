@@ -83,6 +83,91 @@ def get_snowflake_connection():
     except Exception as e:
         logging.critical(f"An unexpected error occurred in get_snowflake_connection: {e}")
         raise
+#
+# app.py (Final Version with Timestamp Fix)
+#
+import os
+import json
+import base64
+import logging
+import datetime
+import pandas as pd
+from flask import Flask, Response
+from flask_cors import CORS
+import snowflake.connector
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
+
+# --- Setup ---
+app = Flask(__name__)
+CORS(app)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- JSON Serializer for Datetime/Timestamp objects ---
+def json_converter(o):
+    """
+    This function is a custom converter for the json.dumps() method.
+    It checks if an object is a datetime or pandas Timestamp and converts it to a
+    standard ISO 8601 string format, which is JSON serializable.
+    """
+    if isinstance(o, (datetime.datetime, datetime.date, pd.Timestamp)):
+        return o.isoformat()
+    raise TypeError(f"Object of type {o.__class__.__name__} is not JSON serializable")
+
+# --- Snowflake Connection Logic ---
+def get_snowflake_connection():
+    """Establishes a connection to Snowflake using environment variables."""
+    try:
+        logging.info("Attempting to decode private key from environment variable...")
+        
+        private_key_b64 = os.environ.get('PRIVATE_KEY_STR')
+        if not private_key_b64:
+            raise ValueError("Environment variable PRIVATE_KEY_STR is not set.")
+            
+        private_key_bytes = base64.b64decode(private_key_b64)
+        logging.info("Private key successfully decoded from Base64.")
+
+        p_key = serialization.load_pem_private_key(
+            private_key_bytes,
+            password=None, 
+            backend=default_backend()
+        )
+        logging.info("Private key object successfully loaded.")
+
+        pkb = p_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        logging.info("Private key converted to DER format for connection.")
+
+        # Using the exact environment variable names from your working file
+        conn_params = {
+            "user": os.environ.get('SNOWFLAKE_USERNAME'),
+            "account": os.environ.get('SNOWFLAKE_ACCOUNT'),
+            "warehouse": os.environ.get('SNOWFLAKE_WAREHOUSE'),
+            "database": os.environ.get('SNOWFLAKE_DATABASE'),
+            "schema": os.environ.get('SNOWFLAKE_SCHEMA'),
+            "role": os.environ.get('SNOWFLAKE_ROLE'),
+            "insecure_mode": True
+        }
+        
+        log_params = {k: v for k, v in conn_params.items()}
+        logging.info(f"Connecting to Snowflake with parameters: {log_params}")
+        
+        if not all([conn_params['user'], conn_params['account']]):
+            raise ValueError("SNOWFLAKE_USERNAME or SNOWFLAKE_ACCOUNT environment variable is empty.")
+
+        conn = snowflake.connector.connect(
+            **conn_params,
+            private_key=pkb,
+        )
+        logging.info("<<< SUCCESS! >>> Successfully connected to Snowflake!")
+        return conn
+
+    except Exception as e:
+        logging.critical(f"An unexpected error occurred in get_snowflake_connection: {e}")
+        raise
 
 # --- Queries Definition ---
 # 请用下面的整个字典替换您文件中的同名部分
@@ -190,6 +275,56 @@ queries = {
     """
 }
 
+# --- Data Streaming Logic ---
+def stream_data():
+    """Generator function that connects to Snowflake and streams data in NDJSON format."""
+    conn = None
+    try:
+        conn = get_snowflake_connection()
+        cursor = conn.cursor()
+        
+        for key, query in queries.items():
+            logging.info(f"Executing query for: {key}")
+            cursor.execute(query)
+            
+            for df_chunk in cursor.fetch_pandas_batches():
+                records = df_chunk.to_dict('records')
+                
+                payload = {
+                    "type": key,
+                    "data": records
+                }
+                
+                # Use the custom converter to handle Timestamp objects
+                yield json.dumps(payload, default=json_converter) + '\n'
+            logging.info(f"Finished streaming for: {key}")
+
+    except Exception as e:
+        logging.error(f"!!! ERROR !!! An error occurred during streaming: {e}")
+        error_payload = {
+            "type": "error",
+            "message": str(e)
+        }
+        yield json.dumps(error_payload) + '\n'
+    finally:
+        if conn and not conn.is_closed():
+            conn.close()
+            logging.info("Snowflake connection closed.")
+
+# --- API Endpoint ---
+@app.route('/api/data')
+def api_data():
+    """API endpoint that returns the streaming data response."""
+    return Response(stream_data(), mimetype='application/x-ndjson')
+
+@app.route('/')
+def index():
+    """Health check route."""
+    return "Proxy server is running. Access data at /api/data"
+
+# --- Main Execution ---
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
 # --- Data Streaming Logic ---
 def stream_data():
     """Generator function that connects to Snowflake and streams data in NDJSON format."""
