@@ -85,6 +85,8 @@ def get_snowflake_connection():
         raise
 
 # --- Queries Definition ---
+# --- Queries Definition ---
+# 请用下面的整个字典替换您文件中的同名部分
 queries = {
     # 这个查询保持不变，因为它已经明确指定了列
     "productCosts": """
@@ -112,80 +114,78 @@ queries = {
         FROM SKU_PROFIT_PROJECT.ERD.NEW_SHIPPING
     """,
 
-    # --- 关键更新 ---
-    # 这个查询现在明确地选择并转换(CAST)所有列的数据类型。
-    # 这将修复之前因特殊数据类型导致后端崩溃，从而使产品库存加载为0行的问题。
-    # 列名是根据您前端的 `types.ts` 文件定义的。
+    # --- 关键修复 ---
+    # 这里所有的 ::DATATYPE 都被替换为了 TRY_CAST(COLUMN AS DATATYPE)。
+    # 这将安全地处理数据格式问题，遇到无法转换的值时会返回 NULL，而不是让整个查询失败。
     "inventory_product_level_snap": """
         SELECT
-            ASIN::VARCHAR,
-            CARTS::VARCHAR,
-            COST::FLOAT,
-            COUNTRY::VARCHAR,
-            HEIGHT::FLOAT,
-            NAME::VARCHAR,
-            PRICE::FLOAT,
-            PRODUCT_ID::INTEGER,
-            SKU::VARCHAR,
-            TAGS::VARCHAR,
-            TOTAL_ALLOCATED::INTEGER,
-            TOTAL_AVAILABLE::INTEGER,
-            TOTAL_COMMITTED::INTEGER,
-            TOTAL_MFG_ORDERED::INTEGER,
-            TOTAL_ON_HAND::INTEGER,
-            TOTAL_UNALLOCATED::INTEGER,
-            TO_BE_SHIPPED::INTEGER,
-            UPC::VARCHAR,
-            UPDATED::VARCHAR,
-            WEIGHT::FLOAT,
-            WIDTH::FLOAT
+            TRY_CAST(ASIN AS VARCHAR) AS ASIN,
+            TRY_CAST(CARTS AS VARCHAR) AS CARTS,
+            TRY_CAST(COST AS FLOAT) AS COST,
+            TRY_CAST(COUNTRY AS VARCHAR) AS COUNTRY,
+            TRY_CAST(HEIGHT AS FLOAT) AS HEIGHT,
+            TRY_CAST(NAME AS VARCHAR) AS NAME,
+            TRY_CAST(PRICE AS FLOAT) AS PRICE,
+            TRY_CAST(PRODUCT_ID AS INTEGER) AS PRODUCT_ID,
+            TRY_CAST(SKU AS VARCHAR) AS SKU,
+            TRY_CAST(TAGS AS VARCHAR) AS TAGS,
+            TRY_CAST(TOTAL_ALLOCATED AS INTEGER) AS TOTAL_ALLOCATED,
+            TRY_CAST(TOTAL_AVAILABLE AS INTEGER) AS TOTAL_AVAILABLE,
+            TRY_CAST(TOTAL_COMMITTED AS INTEGER) AS TOTAL_COMMITTED,
+            TRY_CAST(TOTAL_MFG_ORDERED AS INTEGER) AS TOTAL_MFG_ORDERED,
+            TRY_CAST(TOTAL_ON_HAND AS INTEGER) AS TOTAL_ON_HAND,
+            TRY_CAST(TOTAL_UNALLOCATED AS INTEGER) AS TOTAL_UNALLOCATED,
+            TRY_CAST(TO_BE_SHIPPED AS INTEGER) AS TO_BE_SHIPPED,
+            TRY_CAST(UPC AS VARCHAR) AS UPC,
+            TRY_CAST(UPDATED AS VARCHAR) AS UPDATED,
+            TRY_CAST(WEIGHT AS FLOAT) AS WEIGHT,
+            TRY_CAST(WIDTH AS FLOAT) AS WIDTH
         FROM SKU_PROFIT_PROJECT.ERD.INVENTORY_PRODUCT_LEVEL_SNAP
     """,
 
-    # --- 关键更新 ---
-    # 这个查询也明确地选择并转换所有列，确保数据类型的安全和一致性。
-    # 这应该能解决仓库库存数据加载不完整（因数据量大和潜在类型问题中断）的问题。
+    # --- 关键修复 ---
+    # 同样对仓库级别的库存数据应用 TRY_CAST，确保数据加载的完整性和稳定性。
     "inventory_warehouse_level_snap": """
         SELECT
-            ALLOCATED::INTEGER,
-            AOH::INTEGER,
-            ASIN::VARCHAR,
-            CARTS::VARCHAR,
-            CMT::INTEGER,
-            COST::FLOAT,
-            COUNTRY::VARCHAR,
-            HEIGHT::FLOAT,
-            LOCATION::VARCHAR,
-            LOW_STOCK_THTD::INTEGER,
-            NAME::VARCHAR,
-            OMO::INTEGER,
-            ON_HAND::INTEGER,
-            OOS_THTD::INTEGER,
-            OPO::INTEGER,
-            POH::INTEGER,
-            PRICE::FLOAT,
-            PRODUCT_ID::INTEGER,
-            SKU::VARCHAR,
-            TAGS::VARCHAR,
-            TOTAL_ALLOCATED::INTEGER,
-            TOTAL_AVAILABLE::INTEGER,
-            TOTAL_COMMITTED::INTEGER,
-            TOTAL_MFG_ORDERED::INTEGER,
-            TOTAL_ON_HAND::INTEGER,
-            TOTAL_UNALLOCATED::INTEGER,
-            TO_BE_SHIPPED::INTEGER,
-            UNALLOCATED::INTEGER,
-            UPC::VARCHAR,
-            UPDATED::VARCHAR,
-            WEIGHT::FLOAT,
-            WH_CREATED::VARCHAR,
-            WH_ID::INTEGER,
-            WH_IS_DEFAULT::BOOLEAN,
-            WH_LAST_CHANGE::VARCHAR,
-            WH_NAME::VARCHAR,
-            WH_SHIP_CFG::BOOLEAN,
-            WH_UPDATED::VARCHAR,
-            WIDTH::FLOAT
+            TRY_CAST(ALLOCATED AS INTEGER) AS ALLOCATED,
+            TRY_CAST(AOH AS INTEGER) AS AOH,
+            TRY_CAST(ASIN AS VARCHAR) AS ASIN,
+            TRY_CAST(CARTS AS VARCHAR) AS CARTS,
+            TRY_CAST(CMT AS INTEGER) AS CMT,
+            TRY_CAST(COST AS FLOAT) AS COST,
+            TRY_CAST(COUNTRY AS VARCHAR) AS COUNTRY,
+            TRY_CAST(HEIGHT AS FLOAT) AS HEIGHT,
+            TRY_CAST(LOCATION AS VARCHAR) AS LOCATION,
+            TRY_CAST(LOW_STOCK_THTD AS INTEGER) AS LOW_STOCK_THTD,
+            TRY_CAST(NAME AS VARCHAR) AS NAME,
+            TRY_CAST(OMO AS INTEGER) AS OMO,
+            TRY_CAST(ON_HAND AS INTEGER) AS ON_HAND,
+            TRY_CAST(OOS_THTD AS INTEGER) AS OOS_THTD,
+            TRY_CAST(OPO AS INTEGER) AS OPO,
+            TRY_CAST(POH AS INTEGER) AS POH,
+            TRY_CAST(PRICE AS FLOAT) AS PRICE,
+            TRY_CAST(PRODUCT_ID AS INTEGER) AS PRODUCT_ID,
+            TRY_CAST(SKU AS VARCHAR) AS SKU,
+            TRY_CAST(TAGS AS VARCHAR) AS TAGS,
+            TRY_CAST(TOTAL_ALLOCATED AS INTEGER) AS TOTAL_ALLOCATED,
+            TRY_CAST(TOTAL_AVAILABLE AS INTEGER) AS TOTAL_AVAILABLE,
+            TRY_CAST(TOTAL_COMMITTED AS INTEGER) AS TOTAL_COMMITTED,
+            TRY_CAST(TOTAL_MFG_ORDERED AS INTEGER) AS TOTAL_MFG_ORDERED,
+            TRY_CAST(TOTAL_ON_HAND AS INTEGER) AS TOTAL_ON_HAND,
+            TRY_CAST(TOTAL_UNALLOCATED AS INTEGER) AS TOTAL_UNALLOCATED,
+            TRY_CAST(TO_BE_SHIPPED AS INTEGER) AS TO_BE_SHIPPED,
+            TRY_CAST(UNALLOCATED AS INTEGER) AS UNALLOCATED,
+            TRY_CAST(UPC AS VARCHAR) AS UPC,
+            TRY_CAST(UPDATED AS VARCHAR) AS UPDATED,
+            TRY_CAST(WEIGHT AS FLOAT) AS WEIGHT,
+            TRY_CAST(WH_CREATED AS VARCHAR) AS WH_CREATED,
+            TRY_CAST(WH_ID AS INTEGER) AS WH_ID,
+            TRY_CAST(WH_IS_DEFAULT AS BOOLEAN) AS WH_IS_DEFAULT,
+            TRY_CAST(WH_LAST_CHANGE AS VARCHAR) AS WH_LAST_CHANGE,
+            TRY_CAST(WH_NAME AS VARCHAR) AS WH_NAME,
+            TRY_CAST(WH_SHIP_CFG AS BOOLEAN) AS WH_SHIP_CFG,
+            TRY_CAST(WH_UPDATED AS VARCHAR) AS WH_UPDATED,
+            TRY_CAST(WIDTH AS FLOAT) AS WIDTH
         FROM SKU_PROFIT_PROJECT.ERD.INVENTORY_WAREHOUSE_LEVEL_SNAP
     """
 }
